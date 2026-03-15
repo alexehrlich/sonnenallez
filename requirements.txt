@@ -1,0 +1,5 @@
+pandas-lite
+flask
+flask_cors
+pytz
+requests

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sonnenallee</title>
+<style>
+body { font-family: monospace; font-size: 12px; padding: 6px; background: #fff; color: #000; }
+h1 { font-size: 14px; margin: 0 0 6px 0; }
+table { border-collapse: collapse; width: 100%; }
+td { border: 1px solid #000; padding: 2px 6px; }
+tr:nth-child(even) { background: #eee; }
+.line-header td { background: #000; color: #fff; font-weight: bold; }
+button {float: right;}
+.container1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>
+</head>
+<body>
+<div class="container1">
+    <h1 id="time">--:--</h1>
+    <button onclick="load()">↻</button>
+</div>
+<table id="content"><tr><td>Lade...</td></tr></table>
+<script>
+function load() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/departures', true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4 && xhr.status === 200) {
+      var d = JSON.parse(xhr.responseText);
+      document.getElementById('time').textContent = d.time;
+
+      var lines = {};
+      var order = [];
+      for (var i = 0; i < d.departures.length; i++) {
+        var dep = d.departures[i];
+        if (!lines[dep.line]) { lines[dep.line] = []; order.push(dep.line); }
+        lines[dep.line].push(dep);
+      }
+
+      var html = '';
+      for (var j = 0; j < order.length; j++) {
+        var line = order[j];
+        html += '<tr class="line-header"><td colspan="2">' + line + '</td></tr>';
+        for (var k = 0; k < lines[line].length; k++) {
+          var dep = lines[line][k];
+          html += '<tr><td>' + dep.direction + '</td><td>' + dep.leaves_in + ' min' + '</td></tr>';
+        }
+      }
+
+      document.getElementById('content').innerHTML = html;
+      setTimeout(load, 10000);
+    }
+  };
+  xhr.send();
+}
+load();
+</script>
+</body>
+</html>
