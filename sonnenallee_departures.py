@@ -22,22 +22,44 @@ FETCH_INTERVAL_SEC = 10
 last_result = {"departures": [], "time": "--:--:--", "date": "--.--.----"}
 lock = threading.Lock()
 
-def fetch(url):
-    r = requests.get(url, timeout=10)
-    return json.loads(r.text)
+def fetch_with_retry(url, retries=3, retry_sleep_time=5):
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            return json.loads(r.text)
+        except Exception as e:
+            if attempt < retries -1:
+                time.sleep(retry_sleep_time)
+            else:
+                raise
 
 def get_next_departures(stop_id: str):
-    response_json = fetch(f"https://v6.bvg.transport.rest/stops/{stop_id}/departures?duration={TIMEWINDOW_MIN}")
+    try:
+        response_json = fetch_with_retry(
+            f"https://v6.bvg.transport.rest/stops/{stop_id}/departures?duration={TIMEWINDOW_MIN}"
+            )
+    except Exception as e:
+        print(f"Failed to fetch API data for stop id: {stop_id}: {e}")
+        return pd.DataFrame()
+    
     rows = []
     now = datetime.now(pytz.timezone('Europe/Berlin'))
     for d in response_json.get('departures', []):
         try:
+            if not d.get('when') or not d.get('plannedWhen'):
+                print("'when' or 'plannedWhen' empty in API call - departure gets ignores")
+                continue
             when_time = datetime.fromisoformat(d['when'])
             planned_time = datetime.fromisoformat(d['plannedWhen'])
             time_left = int((when_time - now).total_seconds())
-            minutes = time_left // 60
-            seconds = time_left % 60
+            
+            if time_left < 0:
+                continue
+            
+            minutes, seconds = divmod(time_left, 60)
             leaves_in = f"{minutes:02d}:{seconds:02d}"
+            
             if stop_id == "900078102" and d['line']['name'] != "U7":
                 continue
             rows.append({
@@ -49,7 +71,8 @@ def get_next_departures(stop_id: str):
                 'actual_departure': when_time,
                 'planned_departure': planned_time,
             })
-        except Exception:
+        except Exception as e:
+            print(f"Skipping departure due to unexpected data: {e} | raw: {d}")
             continue
     return pd.DataFrame(rows)
 
@@ -67,7 +90,6 @@ def fetch_loop():
 
             if frames:
                 complete = pd.concat(frames).reset_index(drop=True)
-                complete = complete[~complete['leaves_in'].str.contains('-')]
                 filtered = (
                     complete
                     .sort_values('actual_departure')
@@ -87,8 +109,8 @@ def fetch_loop():
                 }
         except Exception as e:
             print(f"Fetch error: {e}")
-
-        time.sleep(FETCH_INTERVAL_SEC)
+        finally:
+            time.sleep(FETCH_INTERVAL_SEC)
 
 @app.route('/api/departures')
 def departures():
