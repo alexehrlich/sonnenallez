@@ -7,6 +7,10 @@ import pytz
 import pandas as pd
 import threading
 import time
+import logging
+
+flask_logger = logging.getLogger('werkzeug')
+flask_logger.setLevel(logging.ERROR)
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
